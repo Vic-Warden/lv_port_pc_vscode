@@ -1,189 +1,142 @@
-# VSCode Simulator project for LVGL
+# LVGL Dual Dashboard Simulator
 
-[LVGL](https://github.com/lvgl/lvgl) is written mainly for microcontrollers and embedded systems, however you can run the library **on your PC** as well without any embedded hardware. The code written on PC can be simply copied when your are using an embedded system.
+A PC/simulator project built on [LVGL](https://github.com/lvgl/lvgl) + SDL2 that renders a **dual-dial automotive instrument cluster**:
 
-This project is pre-configured for VSCode and should work work on Windows, Linux and MacOs as well. FreeRTOS is also included and can be optionally enabled to better simulate embedded system's behavior. 
+| Left dial — Dashboard | Right dial — Infotainment |
+|---|---|
+| Battery arc & percentage | Album art & music metadata |
+| Estimated range (km) | Incoming-call overlay |
+| Drive-mode icon & label | Time & date |
+| Lighting indicator | — |
+| Left / Right turn-blinkers | — |
 
-## Get started
+Both dials are 420 × 420 px circles rendered side-by-side in a 960 × 480 SDL window.
 
-### Install SDL and the build tools
+---
 
-- **Windows (vcpkg):** `vcpkg install sdl2`  (`vcpkg` can be installed from [https://github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg)) Also install either MinGW or another compiler and `cmake`.
-- **macOS (Homebrew):** `brew install sdl2 cmake make`  
-- **Linux:**  
-  - **Debian/Ubuntu:** `sudo apt install build-essential cmake libsdl2-dev`  
-  - **Arch:** `sudo pacman -S base-devel cmake sdl2`  
-  - **Fedora:** `sudo dnf install @development-tools cmake SDL2-devel`  
-- **Manual Installation of SDL:** Download from [SDL’s website](https://github.com/libsdl-org/SDL/releases) and place headers/libraries in your project.
-- **Verify Installation:** `sdl2-config --version`, `cmake --version`, `gcc --version`, `g++ --version` (should return the installed version).  
+## Project structure
 
-### Get the PC project
+```
+LVGL-Dual-Dash/
+├── CMakeLists.txt          # CMake build configuration
+├── lv_conf.h               # LVGL configuration
+├── config/
+│   └── FreeRTOSConfig.h    # FreeRTOS heap / tick settings
+├── FreeRTOS/               # FreeRTOS kernel (optional)
+├── lvgl/                   # LVGL library submodule
+└── src/
+    ├── main.c              # Entry point – dual-dial UI + simulation loop
+    ├── freertos_main.c     # Alternative entry point with FreeRTOS tasks
+    ├── mouse_cursor_icon.c # Custom cursor image asset
+    ├── album_cover.c       # Album art image asset (LVGL C array)
+    ├── adaptive.c          # "Driver assistance" icon asset
+    ├── autonomous.c        # "Full autonomous" icon asset
+    ├── charging.c          # Charging / low-battery icon asset
+    ├── front_fog_light.c   # Front fog-light icon asset
+    ├── low_beam.c          # Low-beam icon asset
+    ├── parking_light.c     # Parking-light icon asset
+    ├── rear_fog_light.c    # Rear fog-light icon asset
+    ├── steering.c          # Steering / manual-drive icon asset
+    ├── hal/
+    │   ├── hal.h
+    │   └── hal.c           # SDL HAL – display + mouse initialisation
+    └── freertos/
+        └── freertos_posix_port.c  # POSIX event helpers for FreeRTOS
+```
 
-Clone the PC project and the related sub modules:
+---
+
+## Features simulated in the main loop
+
+### Left dial – Dashboard
+| Feature | Detail |
+|---|---|
+| **Battery arc** | 270 ° arc drains from 30 % → 0 %; colour interpolates green → yellow → red |
+| **Range label** | Calculated as `battery_pct × 1.6` km |
+| **Drive-mode icon** | Switches automatically with battery level: Full Autonomous → Driver assistance → Manual Drive → LOW BATTERY |
+| **Lighting indicator** | Cycles through: Parking light → Low beam (green) → High beam (blue) → Front fog → Rear fog |
+| **Turn blinkers** | Alternates Left / Right / Hazard at ~1 Hz; arrows illuminate green when active |
+
+### Right dial – Infotainment
+| Feature | Detail |
+|---|---|
+| **Album art** | Static image rendered at reduced scale in the centre of the dial |
+| **Music metadata** | Title and artist labels below the artwork |
+| **Incoming-call overlay** | Toggles every ~10 s; hides music UI and shows caller name + number |
+| **Time & date** | Static label at the bottom of the dial |
+
+---
+
+## Prerequisites
+
+| Tool | macOS (Homebrew) | Debian/Ubuntu |
+|---|---|---|
+| SDL2 | `brew install sdl2` | `sudo apt install libsdl2-dev` |
+| CMake | `brew install cmake` | `sudo apt install cmake` |
+| C compiler | Xcode CLT or `brew install llvm` | `sudo apt install build-essential` |
+
+---
+
+## Build & run
 
 ```bash
-git clone --recursive https://github.com/lvgl/lv_port_pc_vscode
+# Clone with submodules
+git clone --recursive <repo-url>
+cd LVGL-Dual-Dash
+
+# Configure and build (standard mode)
+cmake -B build
+cmake --build build -j$(nproc)
+
+# Run
+./bin/main
 ```
 
-## Usage
+### Debug in VS Code
 
-### Visual Studio Code
+1. Open `simulator.code-workspace`.
+2. Install the recommended extensions (CMake Tools, C/C++).
+3. Open **Run and Debug** → select **Debug LVGL demo with gdb**.
+4. Press **F5**.
 
-1. Be sure you have installed [SDL and the build tools](#install-sdl-and-the-build-tools)
-2. Open the project by double clicking on `simulator.code-workspace` or opening it with `File/Open Workspace from File`
-3. Install the recommended plugins
-4. Click the Run and Debug page on the left, and select `Debug LVGL demo with gdb` from the drop-down on the top. Like this:
-![image](https://github.com/lvgl/lv_port_pc_vscode/assets/7599318/f527b235-5718-4949-b5f0-bd807b3a64ba)
-5. Click the Play button or hit F5 to start debugging.
-
-#### ArchLinux User
-
-VSCode does not officially provide an installation package under Arch, you need to use the AUR manager `paru` to install it.
-The command is as follows:
+### macOS – use Homebrew clang (avoids `-fsanitize=leak` issues)
 
 ```bash
-paru -S visual-studio-code-bin
+brew install llvm
+# In VS Code: Cmd+Shift+P → "CMake: Select a Kit" → pick the Homebrew clang entry
+# Then: Cmd+Shift+P → "CMake: Configure"
 ```
 
-#### macOS
+---
 
-Apple's default clang does not support the `-fsanitize=leak` flag.
+## Optional: enable FreeRTOS
 
-to build using the latest version of clang from homebrew, do the following:
+The project ships with a ready-made FreeRTOS entry point (`freertos_main.c`) that spawns an `lvgl_task` and a second background task.
 
-1. `brew install llvm`
+1. In `lv_conf.h` change:
+   ```c
+   #define LV_USE_OS   LV_OS_FREERTOS
+   ```
+2. Build with:
+   ```bash
+   cmake -B build -DUSE_FREERTOS=ON
+   cmake --build build -j$(nproc)
+   ```
 
-2. cmd+shift+p and run `Cmake: select a kit`, then `[Scan for kits]`
+> **Heap note:** the FreeRTOS config allocates **512 MB** of heap (`configTOTAL_HEAP_SIZE`) to ensure the SDL window initialises promptly. Reducing this value may cause visible delays or prevent the window from appearing.
 
-3. then cmd+shift+p and run `Cmake: select a kit`, select the version of clang you just installed from homebrew (it should say `Using compilers C=/opt/homebrew/opt/llvm/bin/clang ...`)
+---
 
-4. reconfigure by running cmd+shift+p `Cmake: Configure`
+## Adding / replacing image assets
 
-5. build using [step 4 above](#visual-studio-code)
+All icons and images are stored as LVGL C-array files (generated via the [LVGL image converter](https://lvgl.io/tools/imageconverter)). To replace an asset:
 
-### FreeRTOS configuration
-To correctly configure the project, the RTOS (Real-Time Operating System) requires a significant amount of heap memory, especially when debugging an SDL (Simple DirectMedia Layer) window application. In this project, the heap memory has been experimentally set to **512 MB**.
+1. Convert your PNG/JPG to a C array with the LVGL online tool (format: **CF_TRUE_COLOR_ALPHA**).
+2. Replace the corresponding `.c` file in `src/`.
+3. Keep the existing `LV_IMG_DECLARE(…)` name in `main.c`, or update both the declaration and the `lv_image_set_src()` call.
 
-```c
-#define configTOTAL_HEAP_SIZE ( ( size_t ) ( 512 * 1024 * 1024 ) )  // 512 MB Heap
-```
-This configuration ensures that the SDL window is displayed in a timely manner. If this value is reduced, it may cause significant delays in the SDL window's appearance. If the allocated heap memory is too small, the window may fail to appear altogether.
-Therefore, it is crucial to allocate sufficient heap memory to ensure smooth execution and debugging experience.
+---
 
-### Enable FreeRTOS 
-To enable the rtos part of this project select in lv_conf.h `#define LV_USE_OS   LV_OS_NONE` to `#define LV_USE_OS  LV_OS_FREERTOS`
-Additionaly you have to enable the compilation of all FreeRTOS Files by turning on the `option(USE_FREERTOS "Enable FreeRTOS" OFF)` in the CMakeLists.txt file or
-by enabling the same flag from the command line when bootstrapping `cmake`:
+## Licence
 
-```bash
-cmake -B build -DUSE_FREERTOS=ON
-```
-
-### CMake
-
-This project uses CMake under the hood which can be used without Visula Studio Code too. Just type these in a Terminal when you are in the project's root folder:
-
-```bash
-mkdir build
-cd build
-cmake ..
-make -j
-```
-
-## Run demos and examples
-
-By default, the widgets demo (`lv_demo_widgets()`) will run. If you want to run a different demo or example from the LVGL library,
-simply replace the demo function call in the code with another one—such as `lv_demo_benchmark()` or `lv_example_label_1()`.
-
-```c
-int main(int argc, char **argv)
-{
-  /* ... */
-  /* Run the default demo */
-  /* To try a different demo or example, replace this with one of: */
-  /* - lv_demo_benchmark(); */
-  /* - lv_demo_stress(); */
-  /* - lv_example_label_1(); */
-  /* - etc. */
-  lv_demo_widgets(); 
-
-  while(1) {
-      /* ... */
-  }
-  return 0;
-}
-```
-
-## Optional library
-
-There are also FreeType and FFmpeg support. You can install these according to the followings:
-
-### Linux
-
-```bash
-# FreeType support
-wget https://kumisystems.dl.sourceforge.net/project/freetype/freetype2/2.13.2/freetype-2.13.2.tar.xz
-tar -xf freetype-2.13.2.tar.xz
-cd freetype-2.13.2
-make
-make install
-```
-
-```bash
-# FFmpeg support
-git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
-cd ffmpeg
-git checkout release/6.0
-./configure --disable-all --disable-autodetect --disable-podpages --disable-asm --enable-avcodec --enable-avformat --enable-decoders --enable-encoders --enable-demuxers --enable-parsers --enable-protocol='file' --enable-swscale --enable-zlib
-make
-sudo make install
-```
-### (RT)OS support
-Works with any OS like pthred, Windows, FreeRTOS, etc. It has build in support for FreeRTOS. 
-
-## Test
-This project is configured for [VSCode](https://code.visualstudio.com) and is tested on: 
-- Ubuntu Linux 
-- Windows WSL (Ubuntu Linux)
-
-It requires a working version of GCC, GDB and make in your path.
-
-To allow debugging inside VSCode you will also require a GDB [extension](https://marketplace.visualstudio.com/items?itemName=webfreak.debug) or other suitable debugger. All the requirements, build and debug settings have been pre-configured in the [.workspace](simulator.code-workspace) file.
-
-The project can use **SDL** but it can be easily relaced by any other built-in LVGL dirvers.
-
-## Integration with LVGL Pro
-
-This project supports integration with LVGL Pro projects for UI development.
-
-### Setup
-
-1. Configure CMake with your LVGL Pro project folder:
-
-```bash
-cmake -B build -DLVGL_PRO_PROJECT_DIR=<path-to-lvgl-pro-project>
-```
-
-Build your project:
-
-```bash
-cmake --build build
-```
-
-### Usage in Code
-
-In your main.c, include the UI header from your LVGL Pro project and replace the default demo with your screen.
-
-```c
-#include "ui.h"
-
-int main(void) {
-
-    /*Initialization code for LVGL*/
-    
-    /* Initialize the LVGL Pro UI */
-    ui_init("<path-to-lvgl-pro-project>");
-    
-    /* ... rest of your application ...*/
-}
-```
+MIT — see [`licence.txt`](licence.txt).
